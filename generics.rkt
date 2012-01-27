@@ -21,6 +21,11 @@
 (define (make-dispatch-table) '())
 (struct dispatch-item (preds body))
 
+;; a generic contains a dispatch table and acts as the dispatcher
+(struct generic ([table #:mutable] dispatcher)
+        #:property prop:procedure
+        (struct-field-index dispatcher))
+
 ;; intentional capture macro like (struct ...)
 ;; (define-generic foo foo-table) binds
 ;;   foo to a dispatcher
@@ -28,27 +33,28 @@
 ;;   foo at phase 1 to generic function info
 (define-syntax (define-generic stx)
   (syntax-parse stx
-    [(_ name:id table-name:id (par-name:id ... ))
-     #'(begin (define table-name (box (make-dispatch-table)))
-              (define name (make-dispatcher table-name par-name ...)))]))
+    [(_ name:id (par-name:id ... ))
+     #'(define name (generic (make-dispatch-table)
+                             (make-dispatcher name par-name ...)))]))
 
 (define-syntax (define-method stx)
   (define-syntax-class param
     (pattern (pred:expr param:id)))
   
   (syntax-parse stx
-    [(_ (name:id table-name:id par:param ...) body)
+    [(_ (name:id par:param ...) body)
      #'(let ([evaled-preds (list par.pred ...)])
-         (set! table-name
-               (box (cons (dispatch-item evaled-preds (λ (par.param ...) body))
-                          (unbox table-name)))))]))
+         (set-generic-table!
+          name
+          (cons (dispatch-item evaled-preds (λ (par.param ...) body))
+                (generic-table name))))]))
 
 ;; (box dispatch-table?) -> procedure?
 (define-syntax (make-dispatcher stx)
   (syntax-parse stx
-    [(_ box-name:id par:id ...)
+    [(_ name:id par:id ...)
      #'(λ (par ...)
-         (define the-table (unbox box-name))
+         (define the-table (generic-table name))
          (let loop ([table the-table])
            (define item (first table))
            (if (andmap (λ (arg pred) (pred arg)) (list par ...) (dispatch-item-preds item))
@@ -56,10 +62,10 @@
                (loop (rest the-table)))))]))
 
 ;; examples
-(define-generic foo foo-table (x y))
-(define-method (foo foo-table (number? x) (number? y))
+(define-generic foo (x y))
+(define-method (foo (number? x) (number? y))
   (+ x y))
-(define-method (foo foo-table (string? x) (string? y))
+(define-method (foo (string? x) (string? y))
   (string-append x y))
-(define-method (foo foo-table (string? x) (number? y))
+(define-method (foo (string? x) (number? y))
   (+ (string->number x) y))
