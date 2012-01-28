@@ -5,35 +5,26 @@
 (provide define-generic
          define-method)
 
-#|
-(define-generic test)
-
-(define-method (test (number? x) (number? y))
-  "number")
-
-(test "foo" "bar") ; => error
-
-(define-method (test (string? x) (string? y))
-  "string")
-
-(test 3 5)         ; => "number"
-(test "foo" "bar") ; => "string"
-|#
-
 ;; Data definitions
+
+;; A dispatch table is a list of dispatch items
+;; A dispatch item is a (dispatch-item list<any -> bool>
+;;                                     (any ... -> any))
+;;
+;; TODO: what's the best representation of dispatch items?
+;;  -- possibly a dispatch tree like in Tessman's "Adding Generic Functions to Scheme"
+;;  -- how do you specify the order of overrides?
 (define (make-dispatch-table) '())
 (struct dispatch-item (preds body))
 
-;; a generic contains a dispatch table and acts as the dispatcher
+;; A generic contains a dispatch table and acts as the dispatcher
 (struct generic ([table #:mutable] dispatcher)
         #:property prop:procedure
         (struct-field-index dispatcher))
 
-;; intentional capture macro like (struct ...)
-;; (define-generic foo foo-table) binds
-;;   foo to a dispatcher
-;;   foo-table to a dispatch table
-;;   foo at phase 1 to generic function info
+;; (define-generic foo) binds
+;;   foo to a generic containing table and dispatcher
+;;   TODO: foo at phase 1 to allow some static checking
 (define-syntax (define-generic stx)
   (syntax-parse stx
     [(_ name:id (par-name:id ... ))
@@ -43,7 +34,7 @@
 (define-syntax (define-method stx)
   (define-syntax-class param
     (pattern (pred:expr param:id)))
-  
+
   (syntax-parse stx
     [(_ (name:id par:param ...) body)
      #'(let ([evaled-preds (list par.pred ...)])
