@@ -2,6 +2,9 @@
 
 (require (for-syntax syntax/parse))
 
+(provide define-generic
+         define-method)
+
 #|
 (define-generic test)
 
@@ -49,23 +52,16 @@
           (cons (dispatch-item evaled-preds (λ (par.param ...) body))
                 (generic-table name))))]))
 
-;; (box dispatch-table?) -> procedure?
+;; construct a dispatcher function
 (define-syntax (make-dispatcher stx)
   (syntax-parse stx
     [(_ name:id par:id ...)
      #'(λ (par ...)
          (define the-table (generic-table name))
          (let loop ([table the-table])
+           (when (null? table)
+             (error "No default case provided."))
            (define item (first table))
            (if (andmap (λ (arg pred) (pred arg)) (list par ...) (dispatch-item-preds item))
                (apply (dispatch-item-body item) (list par ...))
-               (loop (rest the-table)))))]))
-
-;; examples
-(define-generic foo (x y))
-(define-method (foo (number? x) (number? y))
-  (+ x y))
-(define-method (foo (string? x) (string? y))
-  (string-append x y))
-(define-method (foo (string? x) (number? y))
-  (+ (string->number x) y))
+               (loop (rest table)))))]))
