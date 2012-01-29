@@ -1,19 +1,38 @@
 #lang racket
 
-(require (for-syntax syntax/parse))
+(require (for-syntax racket/list
+                     racket/struct-info
+                     syntax/parse))
 
 (provide define-generic
          define-method)
 
-;; Data definitions
+;; TODO: what's the best representation of dispatch items?
+;;  -- possibly a dispatch tree like in Tessman's "Adding Generic Functions to Scheme"
+;;  -- how do you specify the order of overrides?
+;;
+;;  One possibility:
+;;    predicate language (ala the match macro) that allows
+;;      arbitrary predicates (but no good reasoning for arbitrary cases)
+;;    built-in reasoning about predicates in racket
+;;
+;;  support for specialized reasoning for structs and so on:
+;;  e.g. (define-method (plus [p1 (struct point)] [p2 (struct point)])
+;;         (struct (+ (point-x p1) (point-y p1))
+;;                 (+ (point-x p1) (point-y p1))))
+;;
+;;       automatically uses the point? predicate and clauses can be
+;;       ordered based on struct inheritance order.
+;;
+;;  Patterns like (? number?) and (? exact-positive-integer?) will be ordered
+;;  in a built-in way. (? arbitrary-predicate?) will be invariant.
 
+;; Data definitions
+;;
 ;; A dispatch table is a list of dispatch items
 ;; A dispatch item is a (dispatch-item list<any -> bool>
 ;;                                     (any ... -> any))
 ;;
-;; TODO: what's the best representation of dispatch items?
-;;  -- possibly a dispatch tree like in Tessman's "Adding Generic Functions to Scheme"
-;;  -- how do you specify the order of overrides?
 (define (make-dispatch-table) '())
 (struct dispatch-item (preds body))
 
@@ -33,7 +52,16 @@
 
 (define-syntax (define-method stx)
   (define-syntax-class param
-    (pattern (pred:expr param:id)))
+    (pattern (param:id pat:predicate-pattern)
+             #:with pred #'pat.pred))
+
+  (define-syntax-class predicate-pattern
+    (pattern ((~literal struct) name:id)
+             #:when (struct-info? (syntax-local-value #'name))
+             #:with pred
+                    (third (extract-struct-info
+                             (syntax-local-value #'name))))
+    (pattern ((~literal ?) pred:expr)))
 
   (syntax-parse stx
     [(_ (name:id par:param ...) body)
